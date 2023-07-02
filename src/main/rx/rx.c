@@ -514,6 +514,10 @@ bool calculateRxChannelsAndUpdateFailsafe(timeUs_t currentTimeUs)
     // Update failsafe
     if (rxFlightChannelsValid && rxSignalReceived) {
         failsafeOnValidDataReceived();
+#if defined(USE_RX_MSP) && defined(USE_MSP_RC_OVERRIDE)
+    } else if (IS_RC_MODE_ACTIVE(BOXMSPRCOVERRIDE) && !mspOverrideIsInFailsafe()) {
+        failsafeOnValidDataReceived();
+#endif
     } else {
         failsafeOnValidDataFailed();
     }
