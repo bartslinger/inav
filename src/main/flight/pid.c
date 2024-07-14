@@ -381,7 +381,7 @@ bool pidInitFilters(void)
 
 void pidResetTPAFilter(void)
 {
-    if (usedPidControllerType == PID_TYPE_PIFF && currentControlRateProfile->throttle.fixedWingTauMs > 0) {
+    if ((usedPidControllerType == PID_TYPE_PIFF || usedPidControllerType == PID_TYPE_INDI) && currentControlRateProfile->throttle.fixedWingTauMs > 0) {
         pt1FilterInitRC(&fixedWingTpaFilter, MS2S(currentControlRateProfile->throttle.fixedWingTauMs), US2S(TASK_PERIOD_HZ(TASK_AUX_RATE_HZ)));
         pt1FilterReset(&fixedWingTpaFilter, getThrottleIdleValue());
     }
@@ -495,7 +495,7 @@ void updatePIDCoefficients(void)
     STATIC_FASTRAM uint16_t prevThrottle = 0;
 
     // Check if throttle changed. Different logic for fixed wing vs multirotor
-    if (usedPidControllerType == PID_TYPE_PIFF && (currentControlRateProfile->throttle.fixedWingTauMs > 0)) {
+    if ((usedPidControllerType == PID_TYPE_PIFF || usedPidControllerType == PID_TYPE_INDI) && (currentControlRateProfile->throttle.fixedWingTauMs > 0)) {
         uint16_t filteredThrottle = pt1FilterApply(&fixedWingTpaFilter, rcCommand[THROTTLE]);
         if (filteredThrottle != prevThrottle) {
             prevThrottle = filteredThrottle;
@@ -528,12 +528,12 @@ void updatePIDCoefficients(void)
         return;
     }
 
-    const float tpaFactor = usedPidControllerType == PID_TYPE_PIFF ? calculateFixedWingTPAFactor(prevThrottle) : calculateMultirotorTPAFactor();
+    const float tpaFactor = (usedPidControllerType == PID_TYPE_PIFF || usedPidControllerType == PID_TYPE_INDI) ? calculateFixedWingTPAFactor(prevThrottle) : calculateMultirotorTPAFactor();
 
     // PID coefficients can be update only with THROTTLE and TPA or inflight PID adjustments
     //TODO: Next step would be to update those only at THROTTLE or inflight adjustments change
     for (int axis = 0; axis < 3; axis++) {
-        if (usedPidControllerType == PID_TYPE_PIFF) {
+        if (usedPidControllerType == PID_TYPE_PIFF || usedPidControllerType == PID_TYPE_INDI) {
             // Airplanes - scale all PIDs according to TPA
             pidState[axis].kP  = pidBank()->pid[axis].P / FP_PID_RATE_P_MULTIPLIER  * tpaFactor;
             pidState[axis].kI  = pidBank()->pid[axis].I / FP_PID_RATE_I_MULTIPLIER  * tpaFactor;
@@ -1351,7 +1351,7 @@ void pidInit(void)
 
     assignFilterApplyFn(pidProfile()->dterm_lpf_type, pidProfile()->dterm_lpf_hz, &dTermLpfFilterApplyFn);
 
-    if (usedPidControllerType == PID_TYPE_PIFF) {
+    if (usedPidControllerType == PID_TYPE_PIFF || usedPidControllerType == PID_TYPE_INDI) {
         pidControllerApplyFn = pidApplyFixedWingRateController;
     } else if (usedPidControllerType == PID_TYPE_PID) {
         pidControllerApplyFn = pidApplyMulticopterRateController;
@@ -1376,11 +1376,11 @@ void pidInit(void)
 }
 
 const pidBank_t * pidBank(void) {
-    return usedPidControllerType == PID_TYPE_PIFF ? &pidProfile()->bank_fw : &pidProfile()->bank_mc;
+    return (usedPidControllerType == PID_TYPE_PIFF || usedPidControllerType == PID_TYPE_INDI) ? &pidProfile()->bank_fw : &pidProfile()->bank_mc;
 }
 
 pidBank_t * pidBankMutable(void) {
-    return usedPidControllerType == PID_TYPE_PIFF ? &pidProfileMutable()->bank_fw : &pidProfileMutable()->bank_mc;
+    return (usedPidControllerType == PID_TYPE_PIFF || usedPidControllerType == PID_TYPE_INDI) ? &pidProfileMutable()->bank_fw : &pidProfileMutable()->bank_mc;
 }
 
 bool isFixedWingLevelTrimActive(void)
