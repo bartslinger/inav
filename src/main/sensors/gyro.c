@@ -471,15 +471,15 @@ void FAST_CODE NOINLINE gyroFilter(void)
         gyroADCf = rpmFilterGyroApply(axis, gyroADCf);
 #endif
 
-        // LULU gyro filter
-        DEBUG_SET(DEBUG_LULU, axis, gyroADCf); //Pre LULU debug
-        float preLulu = gyroADCf;
-        gyroADCf = gyroLuluApplyFn((filter_t *) &gyroLuluState[axis], gyroADCf);
-        DEBUG_SET(DEBUG_LULU, axis + 3, gyroADCf); //Post LULU debug
-
-        if (axis == ROLL) {
-            DEBUG_SET(DEBUG_LULU, 6, gyroADCf - preLulu); //LULU delta debug
-        }
+        // // LULU gyro filter
+        // DEBUG_SET(DEBUG_LULU, axis, gyroADCf); //Pre LULU debug
+        // float preLulu = gyroADCf;
+        // gyroADCf = gyroLuluApplyFn((filter_t *) &gyroLuluState[axis], gyroADCf);
+        // DEBUG_SET(DEBUG_LULU, axis + 3, gyroADCf); //Post LULU debug
+        //
+        // if (axis == ROLL) {
+        //     DEBUG_SET(DEBUG_LULU, 6, gyroADCf - preLulu); //LULU delta debug
+        // }
 
         // Gyro Main LPF
         gyroADCf = gyroLpf2ApplyFn((filter_t *) &gyroLpf2State[axis], gyroADCf);
