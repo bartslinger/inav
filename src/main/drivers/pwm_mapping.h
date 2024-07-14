@@ -28,7 +28,7 @@
 #define MAX_MOTORS  12
 #endif
 
-#define MAX_SERVOS  18
+#define MAX_SERVOS  16
 
 #define PWM_TIMER_HZ    1000000
 
