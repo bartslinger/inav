@@ -122,6 +122,12 @@ static uint8_t maxServoIndex;
 static biquadFilter_t servoFilter[MAX_SUPPORTED_SERVOS];
 static bool servoFilterIsSet;
 
+#ifdef USE_SIMULATOR
+// only for roll, pitch and yaw
+static biquadFilter_t simOutputFilter[3];
+static bool simOutputFilterIsSet = false;
+#endif
+
 static servoMetadata_t servoMetadata[MAX_SUPPORTED_SERVOS];
 static rateLimitFilter_t servoSpeedLimitFilter[MAX_SERVO_RULES];
 
@@ -377,9 +383,16 @@ void servoMixer(float dT)
 #endif
 
 #ifdef USE_SIMULATOR
-	simulatorData.input[INPUT_STABILIZED_ROLL] = input[INPUT_STABILIZED_ROLL];
-	simulatorData.input[INPUT_STABILIZED_PITCH] = input[INPUT_STABILIZED_PITCH];
-	simulatorData.input[INPUT_STABILIZED_YAW] = input[INPUT_STABILIZED_YAW];
+    if (!simOutputFilterIsSet) {
+        for (int i = 0; i < 3; i++) {
+            biquadFilterInitLPF(&simOutputFilter[i], servoConfig()->servo_lowpass_freq, getLooptime());
+            biquadFilterReset(&simOutputFilter[i], 0.0);
+        }
+        simOutputFilterIsSet = true;
+    }
+    simulatorData.input[INPUT_STABILIZED_ROLL] = biquadFilterApply(&simOutputFilter[0], input[INPUT_STABILIZED_ROLL]);
+    simulatorData.input[INPUT_STABILIZED_PITCH] = biquadFilterApply(&simOutputFilter[1], input[INPUT_STABILIZED_PITCH]);
+    simulatorData.input[INPUT_STABILIZED_YAW] = biquadFilterApply(&simOutputFilter[2], input[INPUT_STABILIZED_YAW]);
 	simulatorData.input[INPUT_STABILIZED_THROTTLE] = input[INPUT_STABILIZED_THROTTLE];
 #endif
 
