@@ -77,6 +77,7 @@ typedef enum {
     PID_TYPE_PID,   // Uses P, I and D terms
     PID_TYPE_PIFF,  // Uses P, I, D and FF
     PID_TYPE_AUTO,  // Autodetect
+    PID_TYPE_INDI,  // Uses FF as effectiveness parameter
 } pidType_e;
 
 typedef struct pid8_s {
