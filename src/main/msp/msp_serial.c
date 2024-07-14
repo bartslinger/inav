@@ -253,7 +253,7 @@ static bool mspSerialProcessReceivedData(mspPort_t *mspPort, uint8_t c)
         case MSP_CHECKSUM_V2_NATIVE:
             if (mspPort->checksum2 == c) {
                 mspPort->c_state = MSP_COMMAND_RECEIVED;
-                SD(fprintf(stderr, "[MSPV2] command received!\n"));
+                // SD(fprintf(stderr, "[MSPV2] command received!\n"));
             } else {
                 SD(fprintf(stderr, "[MSPV2] Checksum error!\n"));
                 mspPort->c_state = MSP_IDLE;
