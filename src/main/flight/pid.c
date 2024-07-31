@@ -107,6 +107,16 @@ typedef struct {
     pt3Filter_t rateTargetFilter;
 
     smithPredictor_t smithPredictor;
+
+    // For INDI control, we have a simplified model of the dynamic behavior
+    pt1Filter_t indiModel;
+    float previous_delta_u;
+
+    // Circular buffer for delayed command
+    int16_t delayed_command_buffer[10];
+    uint8_t command_buffer_head;
+    uint16_t step_size;
+    uint16_t step_index;
 } pidState_t;
 
 STATIC_FASTRAM bool pidFiltersConfigured = false;
@@ -363,6 +373,31 @@ bool pidInitFilters(void)
         getLooptime()
     );
 #endif
+
+    // Initialize the INDI model
+    pidState->previous_delta_u = 0.0;
+    for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
+        // hardcoded slow dynamics. should be configurable per axis
+        pt1FilterInit(&pidState[axis].indiModel, 1.0, US2S(refreshRate));
+    }
+
+    // delay total is 100ms
+    // each step is 10 ms
+    const uint32_t delay = 100000; // us
+    const uint32_t loopTime = getLooptime();
+    const uint32_t stepSize = delay / (10 * loopTime);
+
+
+    for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
+        for (int j = 0; j < 10; j++) {
+            pidState[i].delayed_command_buffer[j] = 0;
+        }
+        pidState[i].command_buffer_head = 0;
+        pidState[i].step_size = stepSize;
+        pidState[i].step_index = 0;
+    }
+
+
 
     pidFiltersConfigured = true;
 
@@ -817,6 +852,58 @@ static float FAST_CODE applyItermRelax(const int axis, float currentPidSetpoint,
     }
 
     return itermErrorRate;
+}
+
+static void NOINLINE pidApplyFixedWingIndiRateController(pidState_t *pidState, flight_dynamics_index_t axis, float dT, float dT_inv)
+{
+    const float rateTarget = getFlightAxisRateOverride(axis, pidState->rateTarget);
+
+    const float rateError = rateTarget - pidState->gyroRate;
+
+    if (pidState->step_index == 0) {
+        pidState->command_buffer_head++;
+        pidState->command_buffer_head %= 10;
+        pidState->delayed_command_buffer[pidState->command_buffer_head] = (int16_t)(pidState->errorGyroIf);
+    }
+    pidState->step_index++;
+    pidState->step_index %= pidState->step_size;
+    const uint8_t command_buffer_tail = (pidState->command_buffer_head + 1) % 10;
+    const float delayed_command = pidState->delayed_command_buffer[command_buffer_tail];
+
+
+    // pt1FilterUpdateCutoff(&pidState->indiModel, pidState->kP * 0.1f);
+    // Apply the previous delta_command on the INDI dynamics, to get the current state
+    const float previousIndiModelOutput = pidState->indiModel.state;
+    const float indiModelOutput = pt1FilterApply(&pidState->indiModel, delayed_command);
+    // (to make the math correct, we should also apply the gyro filter to the indiModelOutput)
+    const float indiModelDifference = indiModelOutput - previousIndiModelOutput;
+
+    const float delta_u = rateError * pidState->kFF;
+    const float delta_command = delta_u - pidState->previous_delta_u + indiModelDifference;
+    const float previous_command = pidState->errorGyroIf;
+    pidState->errorGyroIf += delta_command;
+
+    const uint16_t limit = 500;
+    pidState->errorGyroIf = constrainf(pidState->errorGyroIf, -limit, limit);
+    axisPID[axis] = pidState->errorGyroIf;
+    pidState->previous_delta_u = (pidState->errorGyroIf - previous_command) + pidState->previous_delta_u - indiModelDifference;
+
+    if (FLIGHT_MODE(SOARING_MODE) && axis == FD_PITCH && calculateRollPitchCenterStatus() == CENTERED) {
+        if (!angleFreefloatDeadband(DEGREES_TO_DECIDEGREES(navConfig()->fw.soaring_pitch_deadband), FD_PITCH)) {
+            axisPID[FD_PITCH] = 0;  // center pitch servo if pitch attitude within soaring mode deadband
+        }
+    }
+
+#ifdef USE_BLACKBOX
+    axisPID_P[axis] = (int32_t)(pidState->delayed_command_buffer[command_buffer_tail]);
+    axisPID_I[axis] = (int32_t)(pidState->errorGyroIf);
+    axisPID_D[axis] = 0.0f;
+    axisPID_F[axis] = (int32_t)(pidState->indiModel.state);
+    axisPID_Setpoint[axis] = rateTarget;
+#endif
+
+    pidState->previousRateGyro = pidState->gyroRate;
+
 }
 
 static void FAST_CODE NOINLINE pidApplyMulticopterRateController(pidState_t *pidState, flight_dynamics_index_t axis, float dT, float dT_inv)
@@ -1312,8 +1399,10 @@ void pidInit(void)
 
     assignFilterApplyFn(pidProfile()->dterm_lpf_type, pidProfile()->dterm_lpf_hz, &dTermLpfFilterApplyFn);
 
-    if (usedPidControllerType == PID_TYPE_PIFF || usedPidControllerType == PID_TYPE_INDI) {
+    if (usedPidControllerType == PID_TYPE_PIFF) {
         pidControllerApplyFn = pidApplyFixedWingRateController;
+    } else if (usedPidControllerType == PID_TYPE_INDI) {
+        pidControllerApplyFn = pidApplyFixedWingIndiRateController;
     } else if (usedPidControllerType == PID_TYPE_PID) {
         pidControllerApplyFn = pidApplyMulticopterRateController;
     } else {
