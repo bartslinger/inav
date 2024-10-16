@@ -181,7 +181,7 @@ static mavlink_message_t mavRecvMsg;
 static mavlink_status_t mavRecvStatus;
 
 static uint8_t mavSystemId = 1;
-static uint8_t mavComponentId = MAV_COMP_ID_SYSTEM_CONTROL;
+static uint8_t mavComponentId = MAV_COMP_ID_AUTOPILOT1;
 
 static APM_COPTER_MODE inavToArduCopterMap(flightModeForTelemetry_e flightMode)
 {
@@ -934,7 +934,7 @@ static bool handleIncoming_MISSION_ITEM(void)
     // Check if this message is for us
     if (msg.target_system == mavSystemId) {
         // Check supported values first
-        if (ARMING_FLAG(ARMED)) {
+        if (ARMING_FLAG(ARMED) && msg.seq != 255) {
             mavlink_msg_mission_ack_pack(mavSystemId, mavComponentId, &mavSendMsg, mavRecvMsg.sysid, mavRecvMsg.compid, MAV_MISSION_ERROR, MAV_MISSION_TYPE_MISSION);
             mavlinkSendMessage();
             return true;
@@ -952,6 +952,22 @@ static bool handleIncoming_MISSION_ITEM(void)
             return true;
         }
 
+        if (msg.seq == 255) {
+            navWaypoint_t wp;
+            wp.action = (msg.command == MAV_CMD_NAV_RETURN_TO_LAUNCH) ? NAV_WP_ACTION_RTH : NAV_WP_ACTION_WAYPOINT;
+            wp.lat = (int32_t)(msg.x * 1e7f);
+            wp.lon = (int32_t)(msg.y * 1e7f);
+            wp.alt = msg.z * 100.0f;
+            wp.p1 = 0;
+            wp.p2 = 0;
+            wp.p3 = 0;
+            wp.flag = 0;
+
+            setWaypoint(255, &wp);
+
+            mavlink_msg_mission_ack_pack(mavSystemId, mavComponentId, &mavSendMsg, mavRecvMsg.sysid, mavRecvMsg.compid, MAV_MISSION_ACCEPTED, MAV_MISSION_TYPE_MISSION);
+            mavlinkSendMessage();
+        }
         if (msg.seq == incomingMissionWpSequence) {
             incomingMissionWpSequence++;
 
